@@ -69,6 +69,7 @@ $(window).load(function() {
       }
      });
 
+  // TODO
     $("#check-formatter").change(function() {
       if ($("#check-formatter").is(':checked')) {
     	   prettify_md=true;
@@ -140,6 +141,7 @@ function changeTab(newTab) {
       var input = $("textarea").val(), array = [];
 
       if (tab==="md") { array = md2array(input); }
+      if (tab==="textile") { array = textile2array(input); }
       if (tab==="csv") { array = csv2array(input); }
       if (tab==="html") { array = html2array(input); }
       if (tab==="sql") { array = sql2array(input); }
@@ -151,6 +153,11 @@ function changeTab(newTab) {
 
       if (newTab==="md") {
         output = array2md(array);
+        new_layout=true;
+      }
+
+      if (newTab==="textile") {
+        output = array2textile(array);
         new_layout=true;
       }
 
@@ -361,6 +368,113 @@ function md2array(md) {
 
     // Last character?
     if ( c === (md.length-1) ) { save=true; }
+
+    // Save to array
+    if (save) {
+
+      if (!array[row]) array[row]=[];
+
+      array[row][col]=buffer.trim();
+      buffer="";
+      save=false;
+
+      if (char==="|") { col++; }
+      if (char==="\n") { col=0; cursor=-1; row++; }
+
+    }
+
+    cursor++;
+
+  }
+
+  // Process headers
+  if (array[1]) {
+    var headers = array[1], headers_okay=true;
+    header_alignment=[];
+
+    for (var h = 0; h < headers.length; h++) {
+
+      var header = headers[h], hLength=header.length, start = false,
+      end = false;
+
+      for (var c = 0; c < header.length; c++) {
+        if ( (c===0) && (header[c]===":") ) start = true;
+        if ( (header[c]!==":") && (header[c]!=="-") ) headers_okay = false;
+        if ( (c===(header.length-1)) && (header[c]===":") ) end = true;
+      }
+
+
+      header_alignment[h]="l"; // Default
+      if ( (start) && (!end) ) { header_alignment[h]="l"; }
+      if ( (start) && (end) ) { header_alignment[h]="c"; }
+      if ( (!start) && (end) ) { header_alignment[h]="r"; }
+
+    }
+
+    if (headers_okay) {
+      // There are headers, so let's remove them.
+      array.splice(1,1);
+    } else {
+      // fail!
+    }
+
+  }
+
+  if (debug) { console.table(array); }
+
+  array = addEmptyCells(array);
+
+  return(array);
+
+}
+
+function textile2array(textile) {
+
+  var row = 0, col = 0, cursor=0, buffer="", escape = false, save = false,
+  array = [];
+
+  for (var c = 0; c < textile.length; c++) {
+
+    var char = textile[c], skip = false;
+
+    // Pipes
+    if ( (char==="|") && (!escape) ) {
+      if (cursor>0) {
+        save=true;
+
+        // Check ahead, if this is a closing pipe/trailing space, we can skip it.
+        if ( (textile[c+1]==="\n") || ( (textile[c+1]===" ") && (textile[c+2]==="\n") ) || (c === (textile.length-1)) ) { skip=true; save=false; }
+
+      } else {
+        skip=true; // First pipe
+      }
+    }
+
+    if (row===0 && char=="_" && textile[c-1]==="|") {
+      skip=true;
+    }
+    if (row===0 && char=="." && textile[c-1]==="_") {
+      skip=true;
+    }
+
+    // New lines
+    if (char==="\n") {
+      save=true;
+    }
+
+    if ( (char==="\\") && (!escape) ) {
+      escape = true;
+    } else {
+      escape = false;
+    }
+
+    // buffer
+    if ( (!save) && (!skip) ) {
+      buffer+=char;
+    }
+
+    // Last character?
+    if ( c === (textile.length-1) ) { save=true; }
 
     // Save to array
     if (save) {
@@ -931,6 +1045,46 @@ function array2md(array) {
 
   return md;
 
+}
+
+function array2textile(array) {
+
+  var textile = "", cell_sizes = [];
+
+  // Gather max cell sizes for each column.
+  for (var r = 0; r < array.length; r++) {
+    for (var c = 0; c < array[r].length; c++) {
+      if ( (!cell_sizes[c]) || (array[r][c].length>cell_sizes[c]) ) {
+        cell_sizes[c]=array[r][c].length;
+      }
+    }
+  }
+
+  for (var r = 0; r < array.length; r++) {
+
+      var row = array[r];
+
+      for (var c = 0; c < row.length; c++) {
+
+        var item = row[c];
+
+        // Output
+        if (c>0) { textile += " "; }
+        if (r==0) {
+          textile += "|_. ";
+        } else {
+          textile += "| ";
+        }
+        textile += item;
+
+      }
+
+      textile += " |";
+      if (r<array.length) { textile += "\n"; }
+
+  }
+
+  return textile;
 }
 
 function array2preview(array) {
